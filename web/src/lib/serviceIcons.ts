@@ -1,0 +1,101 @@
+import {
+  Accessibility,
+  Armchair,
+  Baby,
+  Bed,
+  Bike,
+  BookOpen,
+  Broom,
+  BroomSparkles,
+  Brush,
+  CarFront,
+  Cat,
+  ChefHat,
+  CookingPot,
+  Dog,
+  Flower2,
+  GraduationCap,
+  Hammer,
+  HandHeart,
+  HeartHandshake,
+  HeartPulse,
+  Hospital,
+  House,
+  Leaf,
+  MopSparkles,
+  PawPrint,
+  Pill,
+  Shirt,
+  ShoppingBasket,
+  Soup,
+  Sparkles,
+  SprayCan,
+  Sprout,
+  Stethoscope,
+  Syringe,
+  Trees,
+  Truck,
+  Users,
+  Utensils,
+  WashingMachine,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
+
+/**
+ * Every icon a service can carry, by the name stored on the service row.
+ *
+ * One map, used by both the front page's tab row and the admin's icon picker,
+ * so the picker can never offer an icon the tabs cannot draw. The backend
+ * validates against the same names -- SERVICE_ICONS in
+ * backend/app/api/v1/admin.py. Change the two together.
+ */
+export const SERVICE_ICONS: Record<string, LucideIcon> = {
+  sparkles: Sparkles,
+  "broom-sparkles": BroomSparkles,
+  "mop-sparkles": MopSparkles,
+  broom: Broom,
+  "spray-can": SprayCan,
+  "washing-machine": WashingMachine,
+  shirt: Shirt,
+  "chef-hat": ChefHat,
+  "cooking-pot": CookingPot,
+  utensils: Utensils,
+  soup: Soup,
+  stethoscope: Stethoscope,
+  "heart-pulse": HeartPulse,
+  pill: Pill,
+  syringe: Syringe,
+  hospital: Hospital,
+  accessibility: Accessibility,
+  "heart-handshake": HeartHandshake,
+  "hand-heart": HandHeart,
+  baby: Baby,
+  users: Users,
+  bed: Bed,
+  armchair: Armchair,
+  "car-front": CarFront,
+  bike: Bike,
+  truck: Truck,
+  "flower-2": Flower2,
+  sprout: Sprout,
+  leaf: Leaf,
+  trees: Trees,
+  dog: Dog,
+  cat: Cat,
+  "paw-print": PawPrint,
+  wrench: Wrench,
+  hammer: Hammer,
+  brush: Brush,
+  "graduation-cap": GraduationCap,
+  "book-open": BookOpen,
+  "shopping-basket": ShoppingBasket,
+  house: House,
+};
+
+export const SERVICE_ICON_NAMES = Object.keys(SERVICE_ICONS);
+
+/** The icon for a service, or Sparkles for a name this build does not know. */
+export function serviceIcon(name: string): LucideIcon {
+  return SERVICE_ICONS[name] ?? Sparkles;
+}

@@ -1,0 +1,29 @@
+# secrets
+.env
+*.env
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# node
+node_modules/
+dist/
+*.local
+
+# storage (uploaded photos, cutouts, documents)
+backend/var/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# agent tooling (the launch config is shared, the rest is per-machine)
+.claude/*
+!.claude/launch.json
+skills-lock.json

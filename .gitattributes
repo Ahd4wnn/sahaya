@@ -1,0 +1,11 @@
+# The repo is checked out on Linux (the VPS) as well as Windows, and shell
+# scripts with CRLF endings fail there with a confusing "bad interpreter".
+# Normalise everything to LF in the repository.
+* text=auto eol=lf
+
+# Binary, so git neither diffs nor converts them.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.ttf binary

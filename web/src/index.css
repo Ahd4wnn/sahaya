@@ -1,0 +1,269 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * Sahaya design tokens
+ *
+ * Every value here comes from the Figma frame "Sahaya" (node 23:2), read
+ * with get_design_context rather than eyeballed. See docs/design.md -- that
+ * file is the spec, this file is the build.
+ *
+ * The stack alternates, and getting it backwards is the easiest way to
+ * make the page look almost-right and wrong:
+ *
+ *     oat page  ->  paper panel  ->  oat card  ->  paper cells
+ *
+ * Token names are colour names, not roles, and deliberately avoid Tailwind's
+ * built-in palettes (`stone`, `olive`) so `bg-oat` can never be confused with
+ * `bg-stone-100`.
+ *
+ * There is no dark theme. The design is one quiet surface, deliberately --
+ * inverting it produces a different product, not a darker one, and the
+ * portrait cutouts and the moss card header both stop working against a
+ * dark ground. Every colour is defined once, on bare :root.
+ * ------------------------------------------------------------------ */
+
+@theme {
+  /* Page ground, and the body of every card sitting on the paper panel. */
+  --color-oat: #edebe2;
+  /* The results panel, the search bar, the header pills, chips and cells. */
+  --color-paper: #fbf9f1;
+  /* Card header, View Profile, the search button, the active wage toggle. */
+  --color-moss: #728156;
+  --color-moss-hover: #616e49;
+  /* The wordmark, the Available pill, chip text and cell labels. */
+  --color-sage: #838f6b;
+
+  /* The frame's darkest text: the headline, nav links, field labels. */
+  --color-ink: #464c39;
+  /* Secondary prose. The frame sets secondary text in sage (#838f6b), which
+     is 2.9:1 on oat -- under WCAG AA's 4.5:1 for body text. Sage stays for
+     the short labels the frame uses it on; long-form secondary copy uses this
+     deeper olive, 4.8:1 on oat and 5.4:1 on paper. */
+  --color-ink-muted: #616b4b;
+  --color-ink-faint: #838f6b;
+  /* Text on moss. */
+  --color-on-moss: #fbf9f1;
+  --color-on-moss-muted: #edebe2;
+
+  --color-line: #d6d8c8;
+  /* The card's internal rules: sage at 50%, exactly as the frame draws them.
+     Kept translucent so the rule reads the same on oat and on paper. */
+  --color-rule: rgb(131 143 107 / 0.5);
+  --color-line-soft: #e4e4d8;
+  /* Control boundary. Meets WCAG 1.4.11 (3:1) against both oat and paper;
+     --color-line is decorative dividers only and deliberately does not. */
+  --color-field: #778260;
+
+  --color-star: #464c39;
+  --color-star-empty: #b8bda6;
+  --color-verified: #3f6b4a;
+  --color-danger: #a03a28;
+
+  --font-display: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Inter, system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    Inter, "Noto Sans Malayalam", Roboto, system-ui, sans-serif;
+  --font-malayalam: "Noto Sans Malayalam", var(--font-sans);
+
+  /* Concentric: a nested corner must be tighter than its parent. */
+  --radius-cell: 10px;
+  --radius-card: 16px;
+  --radius-panel: 24px;
+  --radius-search: 44px;
+
+  --shadow-raise: 0 1px 2px rgb(52 58 38 / 0.05), 0 10px 28px -14px rgb(52 58 38 / 0.2);
+  --shadow-menu: 0 2px 6px rgb(52 58 38 / 0.06), 0 24px 48px -20px rgb(52 58 38 / 0.3);
+}
+
+@layer base {
+  /* One theme only. This pins the UA to light so form controls, scrollbars
+     and the canvas behind the page do not go dark on their own. */
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Scrolling is the browser's own. Smooth jumps are requested per call in
+       lib/motion.ts, where the reduced-motion setting is checked, rather than
+       forced on every anchor from here. */
+    scroll-behavior: auto;
+  }
+
+  body {
+    background-color: var(--color-oat);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* The page must never scroll sideways; wide rows keep overflow to
+       themselves via .scroll-x. */
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /*
+   * The scrollbar.
+   *
+   * The platform default is a grey slab bolted to the right of the page and
+   * it is the loudest wrong colour on the screen. This is the same bar, sized
+   * and tinted to belong -- not hidden, because a page this long needs the
+   * position feedback. Firefox gets the two-value `scrollbar-color` form; the
+   * WebKit pseudo-elements cover everything else.
+   */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-line);
+    border-radius: 999px;
+    /* The transparent border is what insets the thumb from the track edge --
+       background-clip stops the border painting over it. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-field);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Numbers that change must not make the layout jitter. */
+  .tabular,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-moss);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-moss);
+    color: var(--color-on-moss);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .ml {
+    font-family: var(--font-malayalam);
+  }
+
+  /* Horizontal scrollers (service tabs, chip rows) keep their overflow to
+     themselves -- the page body must never scroll sideways. */
+  .scroll-x {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+
+  /*
+   * The phone search sheet's entrance.
+   *
+   * A CSS animation, not a JS one, and deliberately: the sheet's resting
+   * position is its normal layout, so it is on screen and usable even if the
+   * animation never runs -- a background tab, a throttled frame clock, a
+   * browser that refuses animations. Driving the position from JS means a
+   * missed frame leaves a full-screen overlay parked off-screen with the page
+   * behind it locked. The reduced-motion block below turns this off.
+   */
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  .sheet-up {
+    animation: sheet-up 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /*
+   * The folder tab.
+   *
+   * A rounded-top paper shape is only half the job -- where it meets the panel
+   * it still leaves two hard 90-degree notches, which is exactly what makes a
+   * tab row look unfinished. The two pseudo-elements are inverted corners:
+   * a transparent square with one rounded corner, filled by a box-shadow that
+   * spills paper into the remaining area. The result is a concave curve that
+   * flows tab into panel with no seam.
+   */
+  .tab-surface {
+    background: var(--color-paper);
+    border-radius: 14px 14px 0 0;
+  }
+
+  .tab-surface::before,
+  .tab-surface::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+  }
+
+  .tab-surface::before {
+    left: -14px;
+    border-bottom-right-radius: 14px;
+    box-shadow: 5px 5px 0 5px var(--color-paper);
+  }
+
+  .tab-surface::after {
+    right: -14px;
+    border-bottom-left-radius: 14px;
+    box-shadow: -5px 5px 0 5px var(--color-paper);
+  }
+}
+
+/* Every motion in the product yields to this. The header morph is not merely
+   shortened under reduced motion -- it is never created at all. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,5 @@
+# Background removal for the helper card cutout portrait.
+# Split out because onnxruntime is a large download and the app degrades
+# gracefully without it (IMAGING_BACKEND=noop -> circular crop fallback).
+rembg==2.0.67
+onnxruntime==1.24.1

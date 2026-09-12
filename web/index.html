@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+
+    <title>Sahaya — good help, hired directly</title>
+    <meta
+      name="description"
+      content="Hire maids, cooks, home nurses and carers across Kerala, and deal with them directly. ₹99 a month for families and for helpers. Sahaya never takes a cut of anyone's salary."
+    />
+    <link rel="canonical" href="https://sahaya.life/" />
+    <!-- The oat page colour, so the phone's chrome matches the page it frames. -->
+    <meta name="theme-color" content="#edebe2" />
+
+    <!--
+      Icons. The SVG carries real Manrope outlines rather than a <text> element,
+      because an SVG favicon that names a font renders in whatever face the
+      viewer happens to have. The .ico exists for the browsers and crawlers
+      that still ask for /favicon.ico by name.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!--
+      What a shared link looks like in WhatsApp, Discord, Slack, iMessage and
+      X. The image URL must be absolute -- every one of those fetches it from
+      its own servers, where a relative path means nothing -- and the explicit
+      width and height stop WhatsApp falling back to a thumbnail while it
+      works the size out for itself.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Sahaya" />
+    <meta property="og:url" content="https://sahaya.life/" />
+    <meta property="og:title" content="Sahaya — good help, hired directly" />
+    <meta
+      property="og:description"
+      content="Maids, cooks, home nurses and carers across Kerala. ₹99 a month for both sides, and no cut of anyone's salary."
+    />
+    <meta property="og:image" content="https://sahaya.life/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Sahaya — good help, hired directly. ₹99 a month, no cut of anyone's salary." />
+    <meta property="og:locale" content="en_IN" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sahaya — good help, hired directly" />
+    <meta
+      name="twitter:description"
+      content="Maids, cooks, home nurses and carers across Kerala. ₹99 a month for both sides, and no cut of anyone's salary."
+    />
+    <meta name="twitter:image" content="https://sahaya.life/og-image.png" />
+
+    <!--
+      Display face: Manrope -- the face used in the Figma frame. Body runs on
+      the Apple/ChatGPT system stack, which is how you actually get SF Pro on
+      the web; it cannot be self-hosted. See docs/design.md section 2.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+Malayalam:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
