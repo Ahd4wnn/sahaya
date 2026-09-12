@@ -1,0 +1,64 @@
+# The Sahaya API. One uvicorn, run as its own user, on a port of its own.
+#
+# Install:
+#   sudo cp deploy/sahaya-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now sahaya-api
+#   systemctl status sahaya-api
+#
+# Named and scoped so nothing here collides with anything already on the box:
+# its own unit name, its own user, its own port, its own database.
+
+[Unit]
+Description=Sahaya API (FastAPI/uvicorn)
+Documentation=https://github.com/Ahd4wnn/sahaya
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=sahaya
+Group=sahaya
+WorkingDirectory=/var/www/sahaya/backend
+
+# No EnvironmentFile on purpose. The app reads backend/.env itself through
+# pydantic-settings, relative to WorkingDirectory -- the same path as in
+# development, so there is one parser for that file rather than two that
+# disagree about quoting and inline comments. The file is chmod 600 and owned
+# by this user; it holds the database password, the JWT secret, the Razorpay
+# keys and the OpenAI key.
+
+# One worker, deliberately. The realtime hub holds a single PostgreSQL
+# LISTEN connection per process and fans events out to the sockets that
+# process owns -- with two workers, half the tabs would miss half the events.
+# Scaling past one means moving that fan-out to Redis first.
+ExecStart=/var/www/sahaya/backend/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8021 \
+    --proxy-headers \
+    --forwarded-allow-ips 127.0.0.1 \
+    --timeout-keep-alive 65
+
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+# --- hardening: the API needs its own tree, the database socket, and the net --
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/www/sahaya/backend/var
+# rembg writes its downloaded model here on first use.
+Environment=NUMBA_CACHE_DIR=/tmp
+Environment=U2NET_HOME=/var/www/sahaya/backend/var/models
+Environment=PYTHONUNBUFFERED=1
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sahaya-api
+
+[Install]
+WantedBy=multi-user.target
