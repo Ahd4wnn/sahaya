@@ -65,53 +65,40 @@ sudo chown -R sahaya:sahaya /var/www/sahaya
 sudo chmod 755 /var/www /var/www/sahaya
 ```
 
-### 2. Its own database, beside the ones already there
+### 2. The code
 
-A role and a database that exist only for this app. Nothing here edits `postgresql.conf` or
-`pg_hba.conf`, so the other projects on this box do not notice.
-
-```bash
-# Hex, deliberately: this password goes inside a URL in .env, and a random one
-# containing @ / : # or ? would have to be percent-encoded there.
-DB_PASS=$(openssl rand -hex 24)
-
-# Create the role, or reset its password if a previous attempt already made it.
-sudo -u postgres psql -qc "CREATE ROLE sahaya WITH LOGIN PASSWORD '$DB_PASS';" 2>/dev/null \
-  || sudo -u postgres psql -qc "ALTER ROLE sahaya WITH LOGIN PASSWORD '$DB_PASS';"
-
-# Create the database only if it is not already there.
-sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='sahaya'" | grep -q 1 \
-  || sudo -u postgres createdb -O sahaya sahaya
-
-# The others are untouched, and the new one answers:
-sudo -u postgres psql -c "\l"
-PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -U sahaya -d sahaya -c "select current_database();"
-```
-
-**Keep this shell open.** `$DB_PASS` is used again in step 4, and it is never printed — the only
-copy ends up inside `.env`.
-
-### 3. The code
+`.env` lives inside the repository, so the clone has to come first.
 
 ```bash
 sudo -u sahaya git clone https://github.com/Ahd4wnn/sahaya.git /var/www/sahaya
 ```
 
-### 4. `backend/.env`
+### 3. The database and `backend/.env`, in one step
 
-Every setting the app reads, with production values. Written once, never committed, `chmod 600`
-because it holds the database password, the token signing key and every API key.
+**These two are one step on purpose.** The role's password and the copy of it in `DATABASE_URL`
+are the same secret in two places: set them in separate commands and they drift apart, and the
+symptom arrives much later as `asyncpg.exceptions.InvalidPasswordError` in the middle of a
+migration. Generating it once and writing it to both, in one block, removes the failure mode --
+and means the password is never typed, pasted or printed.
 
-The block below generates the two secrets itself and fills them in, so neither is ever typed or
-pasted. Run it **once**; it refuses to overwrite an existing file.
+Nothing here edits `postgresql.conf` or `pg_hba.conf`, so the other projects on this box do not
+notice.
 
 ```bash
-# Run this in the same shell as step 2, so $DB_PASS is still set. If you have
-# opened a new session since, read the password out of the old .env or reset it
-# (docs: "if you forget the database password").
-sudo -u sahaya test -f /var/www/sahaya/backend/.env \
-  && echo "REFUSING: .env already exists -- edit it by hand instead" \
-  || cat <<EOF | sudo -u sahaya tee /var/www/sahaya/backend/.env > /dev/null
+# Hex, deliberately: this password goes inside a URL, and a random one
+# containing @ / : # or ? would have to be percent-encoded there.
+DB_PASS=$(openssl rand -hex 24)
+
+# The role: created, or its password reset if an earlier attempt made it.
+sudo -u postgres psql -qc "CREATE ROLE sahaya WITH LOGIN PASSWORD '$DB_PASS';" 2>/dev/null \
+  || sudo -u postgres psql -qc "ALTER ROLE sahaya WITH LOGIN PASSWORD '$DB_PASS';"
+
+# The database, only if it is not already there.
+sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='sahaya'" | grep -q 1 \
+  || sudo -u postgres createdb -O sahaya sahaya
+
+# And the same password into .env, in the same breath.
+cat <<EOF | sudo -u sahaya tee /var/www/sahaya/backend/.env > /dev/null
 # --- environment ---
 APP_ENV=production
 SECRET_KEY=$(openssl rand -hex 32)
@@ -135,14 +122,14 @@ ASSISTANT_BACKEND=openai
 STORAGE_LOCAL_DIR=/var/www/sahaya/backend/var/uploads
 STORAGE_PUBLIC_BASE=https://api.sahaya.life/media
 
-# --- smtp (EMAIL_BACKEND=smtp) ---
+# --- smtp (when EMAIL_BACKEND=smtp) ---
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=Sahaya <no-reply@sahaya.life>
 
-# --- msg91 (SMS_BACKEND=msg91) ---
+# --- msg91 (when SMS_BACKEND=msg91) ---
 MSG91_AUTH_KEY=
 MSG91_SENDER_ID=
 MSG91_DLT_TE_ID=
@@ -175,15 +162,19 @@ EOF
 
 sudo chmod 600 /var/www/sahaya/backend/.env
 sudo chown sahaya:sahaya /var/www/sahaya/backend/.env
+
+# Prove the two agree before going any further -- this is the check that would
+# have caught it, and it costs nothing.
+PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -U sahaya -d sahaya -c "select current_database();"
 ```
 
-Then paste the OpenAI key in by hand — it is the one value that cannot be generated:
+Then paste in the one value that cannot be generated:
 
 ```bash
 sudo -u sahaya nano /var/www/sahaya/backend/.env    # fill in OPENAI_API_KEY
 ```
 
-Empty is a valid state for every blank above. With no OpenAI key the assistant is hidden
+Empty is a valid state for every other blank. With no OpenAI key the assistant is hidden
 everywhere and its endpoints answer 503; with no Razorpay keys the checkout reports itself as not
 configured rather than failing halfway; with `console` senders, OTP codes go to the journal
 (`journalctl -u sahaya-api -f`), which is how you sign in before the SMS provider exists.
@@ -196,10 +187,23 @@ Two settings are worth understanding rather than copying:
   every photo URL, and a relative `/media` would point the card at sahaya.life, where no photos
   live.
 
-Copy the finished file into a password manager. It is fifteen lines of things that are painful to
-reconstruct.
+Copy the finished file into a password manager. It is fifty lines of things that are painful to
+reconstruct, and one of them cannot be recovered at all.
 
-### 5. Install, migrate, build
+#### If the password and `.env` have already drifted
+
+The symptom is `InvalidPasswordError` from alembic or from the API. Set both again, together:
+
+```bash
+NEW=$(openssl rand -hex 24)
+sudo -u postgres psql -qc "ALTER ROLE sahaya WITH LOGIN PASSWORD '$NEW';"
+sudo -u sahaya sed -i \
+  "s|^DATABASE_URL=.*|DATABASE_URL=postgresql+asyncpg://sahaya:${NEW}@127.0.0.1:5432/sahaya|" \
+  /var/www/sahaya/backend/.env
+sudo systemctl restart sahaya-api 2>/dev/null || true
+```
+
+### 4. Install, migrate, build
 
 ```bash
 sudo -u sahaya /var/www/sahaya/deploy/deploy.sh
@@ -222,7 +226,7 @@ The script does **not** seed demo data. Production starts with no helpers, which
 front page shows an empty results panel until real people sign up. For a staging box,
 `python -m app.db.seed_demo` adds sixteen fictional helpers and their portraits.
 
-### 6. The service
+### 5. The service
 
 ```bash
 sudo cp /var/www/sahaya/deploy/sahaya-api.service /etc/systemd/system/
@@ -235,7 +239,7 @@ curl -s http://127.0.0.1:8021/health          # {"status":"ok","env":"production
 If 8021 is taken by something already on the box, change it in both the unit and
 `deploy/nginx/api.sahaya.life.conf` — they must agree. `sudo ss -ltnp | grep 8021` tells you.
 
-### 7. nginx
+### 6. nginx
 
 ```bash
 sudo cp /var/www/sahaya/deploy/nginx/sahaya.life.conf     /etc/nginx/sites-available/sahaya.life
@@ -248,7 +252,7 @@ sudo nginx -t && sudo systemctl reload nginx
 `nginx -t` before the reload is not optional: a syntax error in a new file takes down every other
 site on the box when nginx refuses to start.
 
-### 8. TLS
+### 7. TLS
 
 ```bash
 sudo certbot --nginx -d sahaya.life -d www.sahaya.life -d api.sahaya.life
@@ -257,7 +261,7 @@ sudo systemctl list-timers 'certbot*' --no-pager     # renewal is already schedu
 
 Certbot edits only these two files, adding the 443 blocks and the redirect from 80.
 
-### 9. Check it
+### 8. Check it
 
 ```bash
 curl -sI https://sahaya.life | head -1
