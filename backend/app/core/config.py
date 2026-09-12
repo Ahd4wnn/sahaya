@@ -1,5 +1,6 @@
 """Application settings. Every secret comes from backend/.env, which is gitignored."""
 
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from typing import Literal
 
@@ -60,6 +61,11 @@ class Settings(BaseSettings):
     #: Comma-separated numbers the reveal applies to. Empty means every number,
     #: which is the dangerous setting; listing your own is the safe one.
     AUTH_TESTING_OTP_PHONES: str = ""
+    #: The last day the reveal works, as YYYY-MM-DD. After it, the switch is
+    #: off however it is configured -- because "we will turn it off later"
+    #: depends on somebody remembering, and what is being remembered hands out
+    #: login codes. Empty means no end date, which is worth avoiding.
+    AUTH_TESTING_OTP_UNTIL: str = ""
 
     # --- OTP policy (see docs/04-auth-flows.md) ---
     OTP_LENGTH: int = 6
@@ -80,6 +86,24 @@ class Settings(BaseSettings):
     ASSISTANT_HISTORY_TURNS: int = 20
     ASSISTANT_MAX_OUTPUT_TOKENS: int = 700
     ASSISTANT_TIMEOUT_SECONDS: float = 30.0
+
+    @property
+    def testing_otp_expired(self) -> bool:
+        """Whether the testing reveal's end date has passed.
+
+        A date we cannot parse counts as expired. This switch reveals
+        credentials, so a typo in it has to fail closed -- the cost of being
+        wrong that way is a confused developer, and the other way is every
+        account on the site.
+        """
+        raw = self.AUTH_TESTING_OTP_UNTIL.strip()
+        if not raw:
+            return False
+        try:
+            until = date.fromisoformat(raw)
+        except ValueError:
+            return True
+        return datetime.now(UTC).date() > until
 
     @property
     def testing_otp_phones(self) -> list[str]:

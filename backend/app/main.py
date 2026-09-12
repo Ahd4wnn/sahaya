@@ -24,13 +24,22 @@ async def lifespan(_app: FastAPI):
     # Said out loud, every start, while it is on: a reveal that nobody
     # remembers enabling is how it survives into a site with real users.
     if settings.AUTH_TESTING_OTP:
+        log = logging.getLogger("sahaya.auth")
         scope = settings.testing_otp_phones
-        logging.getLogger("sahaya.auth").warning(
-            "AUTH_TESTING_OTP is ON -- login codes are returned over HTTP for %s. "
-            "Anyone who types one of those numbers can sign in as it. Turn this "
-            "off before real sign-ups begin.",
-            ", ".join(scope) if scope else "EVERY NUMBER",
-        )
+        if settings.testing_otp_expired:
+            log.warning(
+                "AUTH_TESTING_OTP is set but its end date (%r) has passed, so codes "
+                "are NOT being revealed. Remove the setting to tidy up.",
+                settings.AUTH_TESTING_OTP_UNTIL,
+            )
+        else:
+            log.warning(
+                "AUTH_TESTING_OTP is ON -- login codes are returned over HTTP for %s, "
+                "until %s. Anyone who types one of those numbers can sign in as it.",
+                ", ".join(scope) if scope else "EVERY NUMBER",
+                settings.AUTH_TESTING_OTP_UNTIL.strip() or "NO END DATE -- set "
+                "AUTH_TESTING_OTP_UNTIL so this cannot be forgotten",
+            )
 
     # The realtime listener is one long-lived connection per process. It
     # reconnects on its own if the database drops, so a failed first connect

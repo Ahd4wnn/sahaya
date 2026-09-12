@@ -925,3 +925,26 @@ async def test_a_verified_email_is_what_lets_google_find_an_admin(db, clean_user
     assert created is False
     assert linked.id == bare.id
     assert linked.role is UserRole.ADMIN, "and it is still an admin"
+
+
+async def test_the_reveal_expires_on_its_own(db, clean_user, client):
+    """"We will turn it off later" is a plan that depends on remembering, and
+    what would be forgotten hands out login codes. An end date in the past
+    switches it off however the rest is configured -- and a date that cannot be
+    parsed counts as expired, because a typo in this switch has to fail closed."""
+    user, _, _ = await person(db, clean_user, UserRole.HIRER)
+    user = await db.get(User, user.id)
+
+    async def start(until: str):
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr("app.core.config.settings.APP_ENV", "production")
+            monkeypatch.setattr("app.core.config.settings.AUTH_TESTING_OTP", True)
+            monkeypatch.setattr("app.core.config.settings.AUTH_TESTING_OTP_PHONES", "")
+            monkeypatch.setattr("app.core.config.settings.AUTH_TESTING_OTP_UNTIL", until)
+            r = await client.post("/api/v1/auth/phone/start", json={"phone": user.phone})
+        return r.json()["dev_code"]
+
+    assert await start("2099-12-31") is not None, "before the end date: revealed"
+    assert await start("") is not None, "no end date: revealed, as before this existed"
+    assert await start("2020-01-01") is None, "past the end date: off, whatever else is set"
+    assert await start("whenever") is None, "an unparseable date fails closed"

@@ -292,22 +292,36 @@ code, and the sign-in page displays it in a "Testing phase OTP" box.
 ```bash
 sudo -u sahaya tee -a /var/www/sahaya/backend/.env > /dev/null <<'EOF'
 AUTH_TESTING_OTP=true
-AUTH_TESTING_OTP_PHONES=+919744637363
+AUTH_TESTING_OTP_PHONES=
+AUTH_TESTING_OTP_UNTIL=2026-10-15
 EOF
-sudo systemctl restart sahaya-api
+sudo -u sahaya /var/www/sahaya/deploy/deploy.sh
 ```
 
-**Keep that allowlist filled in.** Empty means *every* number, and the reveal is an account
-takeover for everything it covers: type somebody's number, read their code, sign in as them. With
-the list set, only those numbers are shown and everyone else's behaviour is unchanged. Every
-reveal is logged at warning level, and the service says so on every start:
+Three settings, and the second two are the important ones:
+
+- **`AUTH_TESTING_OTP_PHONES`** narrows it to specific numbers. **Empty means every number** --
+  which is what you want while testing sign-ups from numbers you do not own in advance, and is
+  also an account takeover for every account on the site: type somebody's number, read their code,
+  sign in as them. Fine on a site with no real users. Not fine the day there are some.
+- **`AUTH_TESTING_OTP_UNTIL`** is the last day it works. After that the reveal is off however the
+  rest is configured, because "we will turn it off later" depends on somebody remembering, and
+  what would be forgotten is a switch that hands out login codes. A date that cannot be parsed
+  counts as expired -- this one fails closed.
+
+The rebuild is needed because the box is part of the bundle; a plain `systemctl restart` is enough
+if only the backend settings changed.
+
+Every reveal is logged at warning level, and the service says which numbers and until when on
+every start:
 
 ```bash
 journalctl -u sahaya-api | grep AUTH_TESTING_OTP
 ```
 
-**Turn it off the day real sign-ups begin** -- set `AUTH_TESTING_OTP=false` and restart. There is
-a test pinning the default to off (`tests/test_round3.py`), so it cannot drift back on by accident.
+**To remove it:** delete the three lines (or set `AUTH_TESTING_OTP=false`) and restart. Four tests
+pin the behaviour -- off by default in production, revealing when asked, allowlist honoured,
+expired dates refused -- so it cannot drift back on unnoticed.
 
 **For real people: Google sign-in.** No SMS in the loop at all, and it is already built on both
 sides -- it needs a client ID.

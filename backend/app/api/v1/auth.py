@@ -70,7 +70,7 @@ def _dev_code_visible(channel: OtpChannel, target: str) -> bool:
     if settings.APP_ENV == "development" and backend == "console":
         return True
 
-    if settings.AUTH_TESTING_OTP:
+    if settings.AUTH_TESTING_OTP and not settings.testing_otp_expired:
         allowed = settings.testing_otp_phones
         if not allowed or target in allowed:
             logger.warning(
