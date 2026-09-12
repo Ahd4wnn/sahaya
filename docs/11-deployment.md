@@ -67,16 +67,29 @@ sudo chmod 755 /var/www /var/www/sahaya
 
 ### 2. Its own database, beside the ones already there
 
-```bash
-# A role and a database that exist only for this app. No changes to
-# postgresql.conf or pg_hba.conf, so nothing else on the box notices.
-sudo -u postgres psql -c "CREATE ROLE sahaya WITH LOGIN PASSWORD 'CHANGE-ME';"
-sudo -u postgres psql -c "CREATE DATABASE sahaya OWNER sahaya;"
+A role and a database that exist only for this app. Nothing here edits `postgresql.conf` or
+`pg_hba.conf`, so the other projects on this box do not notice.
 
-# Confirm the others are untouched, and that the new one answers:
+```bash
+# Hex, deliberately: this password goes inside a URL in .env, and a random one
+# containing @ / : # or ? would have to be percent-encoded there.
+DB_PASS=$(openssl rand -hex 24)
+
+# Create the role, or reset its password if a previous attempt already made it.
+sudo -u postgres psql -qc "CREATE ROLE sahaya WITH LOGIN PASSWORD '$DB_PASS';" 2>/dev/null \
+  || sudo -u postgres psql -qc "ALTER ROLE sahaya WITH LOGIN PASSWORD '$DB_PASS';"
+
+# Create the database only if it is not already there.
+sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='sahaya'" | grep -q 1 \
+  || sudo -u postgres createdb -O sahaya sahaya
+
+# The others are untouched, and the new one answers:
 sudo -u postgres psql -c "\l"
-PGPASSWORD='CHANGE-ME' psql -h 127.0.0.1 -U sahaya -d sahaya -c "select current_database();"
+PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -U sahaya -d sahaya -c "select current_database();"
 ```
+
+**Keep this shell open.** `$DB_PASS` is used again in step 4, and it is never printed — the only
+copy ends up inside `.env`.
 
 ### 3. The code
 
@@ -86,46 +99,105 @@ sudo -u sahaya git clone https://github.com/Ahd4wnn/sahaya.git /var/www/sahaya
 
 ### 4. `backend/.env`
 
-Written by hand, once, and never committed. `chmod 600` because it holds the database password,
-the JWT secret and the API keys.
+Every setting the app reads, with production values. Written once, never committed, `chmod 600`
+because it holds the database password, the token signing key and every API key.
+
+The block below generates the two secrets itself and fills them in, so neither is ever typed or
+pasted. Run it **once**; it refuses to overwrite an existing file.
 
 ```bash
-sudo -u sahaya tee /var/www/sahaya/backend/.env > /dev/null <<'EOF'
+# Run this in the same shell as step 2, so $DB_PASS is still set. If you have
+# opened a new session since, read the password out of the old .env or reset it
+# (docs: "if you forget the database password").
+sudo -u sahaya test -f /var/www/sahaya/backend/.env \
+  && echo "REFUSING: .env already exists -- edit it by hand instead" \
+  || cat <<EOF | sudo -u sahaya tee /var/www/sahaya/backend/.env > /dev/null
+# --- environment ---
 APP_ENV=production
-SECRET_KEY=REPLACE_WITH_openssl_rand_hex_32
+SECRET_KEY=$(openssl rand -hex 32)
 CORS_ORIGINS=https://sahaya.life,https://www.sahaya.life
 
-DATABASE_URL=postgresql+asyncpg://sahaya:CHANGE-ME@127.0.0.1:5432/sahaya
+# --- database ---
+DATABASE_URL=postgresql+asyncpg://sahaya:${DB_PASS}@127.0.0.1:5432/sahaya
 
-# Console senders print OTPs to the journal. Swap to msg91/smtp when the DLT
-# registration and mail credentials land.
+# --- tokens ---
+ACCESS_TOKEN_MINUTES=15
+REFRESH_TOKEN_DAYS=30
+
+# --- providers ---
 EMAIL_BACKEND=console
 SMS_BACKEND=console
 STORAGE_BACKEND=local
 IMAGING_BACKEND=rembg
+ASSISTANT_BACKEND=openai
 
+# --- storage ---
 STORAGE_LOCAL_DIR=/var/www/sahaya/backend/var/uploads
-# Absolute, because the images are served from the API's own name and the page
-# that renders them is on another origin.
 STORAGE_PUBLIC_BASE=https://api.sahaya.life/media
 
+# --- smtp (EMAIL_BACKEND=smtp) ---
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=Sahaya <no-reply@sahaya.life>
+
+# --- msg91 (SMS_BACKEND=msg91) ---
+MSG91_AUTH_KEY=
+MSG91_SENDER_ID=
+MSG91_DLT_TE_ID=
+
+# --- sign-in ---
 GOOGLE_CLIENT_ID=
+APPLE_CLIENT_ID=
+
+# --- razorpay ---
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
 RAZORPAY_WEBHOOK_SECRET=
 
-# Ask Sahaya. Empty means the assistant is hidden everywhere and its
-# endpoints answer 503 -- the feature ships dark until a key is pasted in.
+# --- otp ---
+OTP_LENGTH=6
+OTP_TTL_MINUTES=10
+OTP_MAX_ATTEMPTS=5
+
+# --- price ---
+SUBSCRIPTION_AMOUNT_PAISE=9900
+
+# --- ask sahaya ---
 OPENAI_API_KEY=
 ASSISTANT_MODEL=gpt-5-nano
 ASSISTANT_DAILY_MESSAGE_LIMIT=40
+ASSISTANT_HISTORY_TURNS=20
+ASSISTANT_MAX_OUTPUT_TOKENS=700
+ASSISTANT_TIMEOUT_SECONDS=30
 EOF
+
 sudo chmod 600 /var/www/sahaya/backend/.env
 sudo chown sahaya:sahaya /var/www/sahaya/backend/.env
 ```
 
-`SECRET_KEY` signs every access token: generate it with `openssl rand -hex 32` and do not reuse
-the development one.
+Then paste the OpenAI key in by hand — it is the one value that cannot be generated:
+
+```bash
+sudo -u sahaya nano /var/www/sahaya/backend/.env    # fill in OPENAI_API_KEY
+```
+
+Empty is a valid state for every blank above. With no OpenAI key the assistant is hidden
+everywhere and its endpoints answer 503; with no Razorpay keys the checkout reports itself as not
+configured rather than failing halfway; with `console` senders, OTP codes go to the journal
+(`journalctl -u sahaya-api -f`), which is how you sign in before the SMS provider exists.
+
+Two settings are worth understanding rather than copying:
+
+- **`CORS_ORIGINS`** must name the site, because the browser calls the API on another origin. Miss
+  it and every request from sahaya.life is blocked by the browser, with nothing in the API log.
+- **`STORAGE_PUBLIC_BASE`** must be absolute for the same reason: it is the prefix the API puts on
+  every photo URL, and a relative `/media` would point the card at sahaya.life, where no photos
+  live.
+
+Copy the finished file into a password manager. It is fifteen lines of things that are painful to
+reconstruct.
 
 ### 5. Install, migrate, build
 
