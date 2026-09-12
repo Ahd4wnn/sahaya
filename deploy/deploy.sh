@@ -61,14 +61,36 @@ npm run build --silent
 echo "    built $(du -sh dist | cut -f1) into web/dist"
 
 say "restarting $SERVICE"
-# The unit is root-owned, so this one step needs a sudo rule (see
-# docs/11-deployment.md) or run the script with sudo.
-sudo systemctl restart "$SERVICE"
+
+# Not installed yet? That is the first deploy, and it is not an error: the
+# install, the migrations, the seed and the bundle are all already done.
+if ! systemctl cat "$SERVICE" > /dev/null 2>&1; then
+  echo "    $SERVICE is not installed yet -- nothing to restart."
+  echo "    Install it (docs/11-deployment.md, 'The service'):"
+  echo "      sudo cp $APP_DIR/deploy/sahaya-api.service /etc/systemd/system/"
+  echo "      sudo systemctl daemon-reload && sudo systemctl enable --now $SERVICE"
+  say "done (service not started)"
+  exit 0
+fi
+
+# -n: never prompt. This script runs as the `sahaya` user, which has no
+# password to type -- without -n, sudo would sit waiting for one forever.
+if ! sudo -n systemctl restart "$SERVICE" 2> /dev/null; then
+  echo "    cannot restart $SERVICE without root. Either:"
+  echo "      sudo systemctl restart $SERVICE"
+  echo "    or allow just this one command, once:"
+  echo "      echo 'sahaya ALL=(root) NOPASSWD: /bin/systemctl restart $SERVICE' \\"
+  echo "        | sudo tee /etc/sudoers.d/sahaya-restart && sudo chmod 440 /etc/sudoers.d/sahaya-restart"
+  say "done (build is in place; $SERVICE still running the previous code)"
+  exit 0
+fi
+
 sleep 2
-systemctl is-active --quiet "$SERVICE" && echo "    $SERVICE is running" || {
+if ! systemctl is-active --quiet "$SERVICE"; then
   echo "    $SERVICE did not come up; journalctl -u $SERVICE -n 50"
   exit 1
-}
+fi
+echo "    $SERVICE is running"
 
 say "health check"
 curl -fsS "http://127.0.0.1:${PORT}/health" && echo
