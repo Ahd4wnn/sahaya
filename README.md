@@ -66,6 +66,19 @@ console backend:
 | `+919900000099` | a family with no membership |
 | `+919900000000` … `+919900000015` | helpers |
 
+## Making someone an admin
+
+Admins are not created by signing up -- there is no "become an admin" button, by design. Promote a
+phone number from the server:
+
+```bash
+cd backend
+python -m app.db.make_admin +919744637363 --name "Their Name"
+```
+
+It creates the account if the number has never signed in, promotes it if it has, and
+`--demote-to hirer` reverses it. They then sign in through the ordinary phone OTP flow.
+
 ## Tests
 
 ```bash

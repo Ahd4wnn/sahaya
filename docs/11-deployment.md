@@ -261,7 +261,27 @@ sudo systemctl list-timers 'certbot*' --no-pager     # renewal is already schedu
 
 Certbot edits only these two files, adding the 443 blocks and the redirect from 80.
 
-### 8. Check it
+### 8. The first admin
+
+Nobody is an admin by signing up. Promote a number from the server, which creates the account if
+it has never signed in:
+
+```bash
+cd /var/www/sahaya/backend
+sudo -u sahaya ./.venv/bin/python -m app.db.make_admin +919744637363 --name "Their Name"
+```
+
+They sign in at https://sahaya.life/signin with that number. While `SMS_BACKEND=console` the code
+is not sent -- it is printed to the API's log, so keep this open in another window:
+
+```bash
+journalctl -u sahaya-api -f | grep -A3 'SMS (console'
+```
+
+`--demote-to hirer` reverses it. An admin has no helper or hirer profile, so they never appear in
+search and have no membership to pay for.
+
+### 9. Check it
 
 ```bash
 curl -sI https://sahaya.life | head -1
