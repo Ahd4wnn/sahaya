@@ -281,7 +281,71 @@ journalctl -u sahaya-api -f | grep -A3 'SMS (console'
 `--demote-to hirer` reverses it. An admin has no helper or hirer profile, so they never appear in
 search and have no membership to pay for.
 
-### 9. Check it
+### 9. Signing in while there is no SMS provider
+
+TRAI DLT registration takes about a week, so until it clears nothing can send a code. Two ways
+through, and they are for different people.
+
+**For the team: show the code on screen.** `AUTH_TESTING_OTP` makes `/auth/*/start` return the
+code, and the sign-in page displays it in a "Testing phase OTP" box.
+
+```bash
+sudo -u sahaya tee -a /var/www/sahaya/backend/.env > /dev/null <<'EOF'
+AUTH_TESTING_OTP=true
+AUTH_TESTING_OTP_PHONES=+919744637363
+EOF
+sudo systemctl restart sahaya-api
+```
+
+**Keep that allowlist filled in.** Empty means *every* number, and the reveal is an account
+takeover for everything it covers: type somebody's number, read their code, sign in as them. With
+the list set, only those numbers are shown and everyone else's behaviour is unchanged. Every
+reveal is logged at warning level, and the service says so on every start:
+
+```bash
+journalctl -u sahaya-api | grep AUTH_TESTING_OTP
+```
+
+**Turn it off the day real sign-ups begin** -- set `AUTH_TESTING_OTP=false` and restart. There is
+a test pinning the default to off (`tests/test_round3.py`), so it cannot drift back on by accident.
+
+**For real people: Google sign-in.** No SMS in the loop at all, and it is already built on both
+sides -- it needs a client ID.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/apis/credentials), create an
+   OAuth 2.0 Client ID of type **Web application**. Authorised JavaScript origins:
+   `https://sahaya.life` and `https://www.sahaya.life`. No redirect URI is needed -- the button
+   uses Google Identity Services, which posts the token back to the page.
+2. The backend verifies the token's audience against the same id, so it goes in `.env`:
+
+```bash
+sudo -u sahaya sed -i 's|^GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com|' \
+  /var/www/sahaya/backend/.env
+```
+
+3. The button is rendered by the bundle, so the id is needed at **build** time. Put it in
+   `.env.production.local`, which is gitignored -- `deploy.sh` does `git reset --hard`, so an edit
+   to the tracked `.env.production` would be wiped on the next deploy:
+
+```bash
+echo 'VITE_GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com' \
+  | sudo -u sahaya tee /var/www/sahaya/web/.env.production.local > /dev/null
+sudo -u sahaya /var/www/sahaya/deploy/deploy.sh
+```
+
+Until then the Google button renders disabled, with "Google sign-in switches on once a Google
+client ID is configured" underneath -- which is the honest state of it.
+
+**One catch for an admin made with `make_admin`:** Google links accounts by *verified email*, and
+an account created from a phone number has none. Signing in with Google would therefore create a
+second account rather than find the admin. Give the admin its email first:
+
+```bash
+cd /var/www/sahaya/backend
+sudo -u sahaya ./.venv/bin/python -m app.db.make_admin +919744637363 --email you@gmail.com
+```
+
+### 10. Check it
 
 ```bash
 curl -sI https://sahaya.life | head -1

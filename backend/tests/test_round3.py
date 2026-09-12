@@ -816,3 +816,112 @@ async def test_framing_survives_the_awkward_cases():
     with Image.open(io.BytesIO(Imaging.frame_subject(wide))) as image:
         assert image.size == (PORTRAIT_EDGE, PORTRAIT_EDGE)
         assert image.getchannel("A").point(lambda a: 255 if a > 8 else 0).getbbox() is not None
+
+# --------------------------------------------------------------------------- #
+# the testing-phase OTP reveal
+# --------------------------------------------------------------------------- #
+async def test_production_does_not_reveal_login_codes(db, clean_user, client):
+    """The default has to be silence. A start endpoint that returns the code
+    for any number you name is an account takeover for every account."""
+    user, _, _ = await person(db, clean_user, UserRole.HIRER)
+    user = await db.get(User, user.id)
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("app.core.config.settings.APP_ENV", "production")
+        monkeypatch.setattr("app.core.config.settings.AUTH_TESTING_OTP", False)
+        r = await client.post("/api/v1/auth/phone/start", json={"phone": user.phone})
+
+    assert r.status_code == 200
+    assert r.json() == {"sent": True, "dev_code": None}
+
+
+async def test_the_testing_switch_reveals_the_code(db, clean_user, client):
+    """With no SMS provider a code cannot reach a phone, so the app shows it.
+    Deliberate, opt-in, and the reply carries the real code -- the one the
+    verify endpoint will accept."""
+    user, _, _ = await person(db, clean_user, UserRole.HIRER)
+    user = await db.get(User, user.id)
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("app.core.config.settings.APP_ENV", "production")
+        monkeypatch.setattr("app.core.config.settings.AUTH_TESTING_OTP", True)
+        monkeypatch.setattr("app.core.config.settings.AUTH_TESTING_OTP_PHONES", "")
+        started = await client.post("/api/v1/auth/phone/start", json={"phone": user.phone})
+        code = started.json()["dev_code"]
+        assert code and len(code) == 6
+
+        # It is the real code, not a decoration: signing in with it works.
+        verified = await client.post(
+            "/api/v1/auth/phone/verify", json={"phone": user.phone, "code": code}
+        )
+    assert verified.status_code == 200
+    assert verified.json()["user"]["id"] == str(user.id)
+
+
+async def test_the_allowlist_narrows_the_reveal(db, clean_user, client):
+    """The safe way to run it: our own numbers on screen, everybody else's
+    unchanged."""
+    mine, _, _ = await person(db, clean_user, UserRole.HIRER)
+    theirs, _, _ = await person(db, clean_user, UserRole.HIRER)
+    mine = await db.get(User, mine.id)
+    theirs = await db.get(User, theirs.id)
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("app.core.config.settings.APP_ENV", "production")
+        monkeypatch.setattr("app.core.config.settings.AUTH_TESTING_OTP", True)
+        monkeypatch.setattr(
+            "app.core.config.settings.AUTH_TESTING_OTP_PHONES", f"{mine.phone}, +919000000999"
+        )
+        listed = await client.post("/api/v1/auth/phone/start", json={"phone": mine.phone})
+        other = await client.post("/api/v1/auth/phone/start", json={"phone": theirs.phone})
+
+    assert listed.json()["dev_code"] is not None
+    assert other.json()["dev_code"] is None, "an unlisted number must not be revealed"
+
+async def test_a_verified_email_is_what_lets_google_find_an_admin(db, clean_user):
+    """An admin made from a phone number has no email, and Google links by
+    *verified* email -- so without one, the first Google sign-in makes a second
+    account instead of finding the admin. That is the whole reason
+    `make_admin --email` exists, and it is invisible until it bites."""
+    from app.db.make_admin import make_admin
+    from app.models.enums import AuthProvider
+    from app.services import auth_service
+    from tests.conftest import unique_email, unique_phone
+
+    phone, email = unique_phone(), unique_email()
+    await clean_user(phone, email)
+
+    # Phone only, as `make_admin +91...` leaves it.
+    assert await make_admin(phone, "Phone Only Admin", "", UserRole.ADMIN) == 0
+    bare = (await db.execute(select(User).where(User.phone == phone))).scalar_one()
+    assert bare.role is UserRole.ADMIN
+    assert bare.email is None
+
+    # Google arrives with a verified email and finds nothing to link to.
+    found, created = await auth_service.resolve_user(
+        db,
+        provider=AuthProvider.GOOGLE,
+        subject=f"google-{uuid.uuid4().hex[:10]}",
+        email=email,
+        email_verified=True,
+        full_name="Phone Only Admin",
+        role=UserRole.HIRER,  # what the join form would have sent
+    )
+    assert created is True, "a second account -- this is the bug --email prevents"
+    assert found.id != bare.id
+    await db.rollback()
+
+    # With the email on the admin row, the same sign-in lands on the admin.
+    assert await make_admin(phone, "", email, UserRole.ADMIN) == 0
+    linked, created = await auth_service.resolve_user(
+        db,
+        provider=AuthProvider.GOOGLE,
+        subject=f"google-{uuid.uuid4().hex[:10]}",
+        email=email,
+        email_verified=True,
+        full_name="Phone Only Admin",
+        role=UserRole.HIRER,
+    )
+    assert created is False
+    assert linked.id == bare.id
+    assert linked.role is UserRole.ADMIN, "and it is still an admin"

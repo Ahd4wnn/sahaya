@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import { SubscribeButton } from "@/components/SubscribeButton";
+import { TestingCode } from "@/components/TestingCode";
 import { Button } from "@/components/kit/Button";
 import { ConfirmDialog, Dialog } from "@/components/kit/Dialog";
 import { Field, Switch, TextInput } from "@/components/kit/Form";
@@ -136,9 +137,9 @@ function ContactDialog({ kind, onClose }: { kind: "phone" | "email"; onClose: ()
             />
           </Field>
           {devCode && (
-            <p className="mt-3 rounded-[12px] bg-[#f3e2c4] px-3 py-2 text-[13px] text-[#8a5a14]">
-              Development mode: the code is <strong data-numeric>{devCode}</strong>.
-            </p>
+            <div className="mt-3">
+              <TestingCode code={devCode} />
+            </div>
           )}
         </>
       )}

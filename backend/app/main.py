@@ -21,6 +21,17 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Said out loud, every start, while it is on: a reveal that nobody
+    # remembers enabling is how it survives into a site with real users.
+    if settings.AUTH_TESTING_OTP:
+        scope = settings.testing_otp_phones
+        logging.getLogger("sahaya.auth").warning(
+            "AUTH_TESTING_OTP is ON -- login codes are returned over HTTP for %s. "
+            "Anyone who types one of those numbers can sign in as it. Turn this "
+            "off before real sign-ups begin.",
+            ", ".join(scope) if scope else "EVERY NUMBER",
+        )
+
     # The realtime listener is one long-lived connection per process. It
     # reconnects on its own if the database drops, so a failed first connect
     # does not stop the API from serving REST.

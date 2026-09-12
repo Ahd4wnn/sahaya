@@ -23,6 +23,7 @@ import asyncio
 import sys
 from datetime import UTC, datetime
 
+from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import select
 
 from app.db.session import SessionLocal
@@ -31,11 +32,23 @@ from app.models.user import AuthIdentity, User
 from app.schemas.auth import normalize_phone
 
 
-async def make_admin(phone: str, name: str, role: UserRole) -> int:
+async def make_admin(phone: str, name: str, email: str, role: UserRole) -> int:
     async with SessionLocal() as db:
         user = (
             await db.execute(select(User).where(User.phone == phone))
         ).scalar_one_or_none()
+
+        if email:
+            clash = (
+                await db.execute(
+                    select(User).where(
+                        User.email == email, User.id != (user.id if user else None)
+                    )
+                )
+            ).scalar_one_or_none()
+            if clash is not None:
+                print(f"{email} already belongs to another account ({clash.phone or clash.id}).")
+                return 1
 
         if user is None:
             if role is not UserRole.ADMIN:
@@ -49,6 +62,13 @@ async def make_admin(phone: str, name: str, role: UserRole) -> int:
                 # Verified on the spot: this is a deliberate act by whoever has
                 # root on the server, not a claim that needs proving by SMS.
                 phone_verified_at=datetime.now(UTC),
+                email=email or None,
+                # Verified too, and that word is load-bearing: Google sign-in
+                # links to an existing account by *verified* email only
+                # (auth_service.resolve_user). Without this the first Google
+                # sign-in would make a second account instead of finding this
+                # one.
+                email_verified_at=datetime.now(UTC) if email else None,
             )
             db.add(user)
             await db.flush()
@@ -65,11 +85,21 @@ async def make_admin(phone: str, name: str, role: UserRole) -> int:
             await db.commit()
             print(f"created admin {phone} ({name or 'no name set'})")
             print(f"  id     {user.id}")
+            if email:
+                print(f"  email  {email} (verified -- Google sign-in will find this account)")
             print("  sign in at /signin with this number; the code is in the API log")
             return 0
 
+        # An email can be added to an existing account on its own, so this is
+        # also how an admin made from a phone number gets Google sign-in.
+        added_email = False
+        if email and user.email != email:
+            user.email = email
+            user.email_verified_at = datetime.now(UTC)
+            added_email = True
+
         was = user.role
-        if was is role:
+        if was is role and not added_email:
             print(f"{phone} is already {role.value} -- nothing to do.")
             if user.status is not UserStatus.ACTIVE:
                 print(f"  note: the account is {user.status.value}, so sign-in is refused")
@@ -83,8 +113,13 @@ async def make_admin(phone: str, name: str, role: UserRole) -> int:
         # their household. Nothing here deletes a profile either -- a role
         # change is reversible, and a deleted profile is not.
         await db.commit()
-        print(f"{phone}: {was.value} -> {role.value}")
+        if was is role:
+            print(f"{phone} was already {role.value}")
+        else:
+            print(f"{phone}: {was.value} -> {role.value}")
         print(f"  name   {user.full_name or '(not set)'}")
+        if added_email:
+            print(f"  email  {email} (verified -- Google sign-in will find this account)")
         print(f"  id     {user.id}")
         if user.status is not UserStatus.ACTIVE:
             print(f"  note: the account is {user.status.value}, so sign-in is refused")
@@ -98,6 +133,11 @@ def main() -> int:
     parser.add_argument("phone", help="any shape: +919744637363, 09744637363, 9744637363")
     parser.add_argument("--name", default="", help="full name, set only if it is blank")
     parser.add_argument(
+        "--email",
+        default="",
+        help="a verified email, so Google sign-in finds this account instead of making one",
+    )
+    parser.add_argument(
         "--demote-to",
         choices=[r.value for r in UserRole if r is not UserRole.ADMIN],
         help="turn an existing admin back into a helper or a family",
@@ -110,8 +150,18 @@ def main() -> int:
         print(f"{args.phone!r}: {exc}")
         return 2
 
+    email = args.email.strip().lower()
+    if email:
+        try:
+            # The same validator the API uses, so an address accepted here
+            # cannot be one the sign-in flow would later reject.
+            email = validate_email(email, check_deliverability=False).normalized
+        except EmailNotValidError as exc:
+            print(f"{args.email!r}: {exc}")
+            return 2
+
     role = UserRole(args.demote_to) if args.demote_to else UserRole.ADMIN
-    return asyncio.run(make_admin(phone, args.name.strip(), role))
+    return asyncio.run(make_admin(phone, args.name.strip(), email, role))
 
 
 if __name__ == "__main__":

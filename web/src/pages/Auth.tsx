@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { TestingCode } from "@/components/TestingCode";
 import { Button, buttonClass } from "@/components/kit/Button";
 import { ChipToggle, Field, Segmented, TextInput } from "@/components/kit/Form";
 import { Surface } from "@/components/kit/Surface";
@@ -419,7 +420,13 @@ export function Auth({ mode }: { mode: "signin" | "join" }) {
     return (
       <Frame
         title="Enter your code"
-        subtitle={`We sent a 6-digit code to ${identifier.trim()}. It works for 10 minutes.`}
+        // "We sent" would be a lie while the code is on screen because there
+        // is nothing to send it with.
+        subtitle={
+          devCode
+            ? `A 6-digit code for ${identifier.trim()}. It works for 10 minutes.`
+            : `We sent a 6-digit code to ${identifier.trim()}. It works for 10 minutes.`
+        }
         back={
           <BackButton
             onClick={() => {
@@ -458,12 +465,7 @@ export function Auth({ mode }: { mode: "signin" | "join" }) {
             />
           </Field>
 
-          {devCode && (
-            <p className="rounded-[12px] bg-[#f3e2c4] px-3 py-2 text-[13px] leading-snug text-[#8a5a14]">
-              Development mode: your code is <strong data-numeric>{devCode}</strong>. This only
-              appears while SMS and email go to the server console.
-            </p>
-          )}
+          {devCode && <TestingCode code={devCode} />}
 
           {errorLine}
 

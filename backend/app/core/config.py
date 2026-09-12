@@ -48,6 +48,19 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
 
+    # --- testing phase: show OTPs on screen instead of sending them ---
+    #: There is no SMS provider yet, so a code cannot reach a phone. With this
+    #: on, /auth/*/start returns the code and the app displays it.
+    #:
+    #: It is an account takeover for every account it covers -- anyone who
+    #: types a number gets that account's code -- so it is off by default,
+    #: every reveal is logged, and startup warns while it is on. Narrow it with
+    #: AUTH_TESTING_OTP_PHONES, and turn it off the day real sign-ups begin.
+    AUTH_TESTING_OTP: bool = False
+    #: Comma-separated numbers the reveal applies to. Empty means every number,
+    #: which is the dangerous setting; listing your own is the safe one.
+    AUTH_TESTING_OTP_PHONES: str = ""
+
     # --- OTP policy (see docs/04-auth-flows.md) ---
     OTP_LENGTH: int = 6
     OTP_TTL_MINUTES: int = 10
@@ -67,6 +80,11 @@ class Settings(BaseSettings):
     ASSISTANT_HISTORY_TURNS: int = 20
     ASSISTANT_MAX_OUTPUT_TOKENS: int = 700
     ASSISTANT_TIMEOUT_SECONDS: float = 30.0
+
+    @property
+    def testing_otp_phones(self) -> list[str]:
+        """The numbers the testing reveal covers. Empty list means all of them."""
+        return [p.strip() for p in self.AUTH_TESTING_OTP_PHONES.split(",") if p.strip()]
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -49,19 +49,36 @@ def _auth_message(exc: AuthError) -> str:
 
 
 
-def _dev_code_visible(channel: OtpChannel) -> bool:
-    """Whether it is safe to return the OTP in the API response.
+def _dev_code_visible(channel: OtpChannel, target: str) -> bool:
+    """Whether to return the OTP in the API response.
 
-    Both conditions must hold: we are in development AND the relevant provider
-    is the console stub. Either alone is not enough -- a staging box with real
-    SMS must never echo codes back over HTTP.
+    Two separate reasons to, and they are not the same thing:
+
+    **Development.** Both conditions must hold -- we are in development AND the
+    relevant provider is the console stub. Either alone is not enough: a
+    staging box with real SMS must never echo codes back over HTTP.
+
+    **The testing phase.** No SMS provider exists yet, so a code cannot reach a
+    phone at all, and the app shows it on screen instead. This is an account
+    takeover for every number it covers: whoever types a number is handed that
+    account's code. Hence the allowlist, the warning on every use, and the
+    warning at startup -- and hence it being off unless somebody turns it on.
     """
-    if settings.APP_ENV != "development":
-        return False
     backend = (
         settings.SMS_BACKEND if channel is OtpChannel.SMS else settings.EMAIL_BACKEND
     )
-    return backend == "console"
+    if settings.APP_ENV == "development" and backend == "console":
+        return True
+
+    if settings.AUTH_TESTING_OTP:
+        allowed = settings.testing_otp_phones
+        if not allowed or target in allowed:
+            logger.warning(
+                "testing-phase OTP revealed over HTTP for %s (AUTH_TESTING_OTP is on)",
+                target,
+            )
+            return True
+    return False
 
 
 async def _issue_and_maybe_reveal(
@@ -99,7 +116,9 @@ async def _issue_and_maybe_reveal(
     else:
         await get_email_sender().send_otp(to=target, code=code)
 
-    return StartOut(sent=True, dev_code=code if _dev_code_visible(channel) else None)
+    return StartOut(
+        sent=True, dev_code=code if _dev_code_visible(channel, target) else None
+    )
 
 
 async def _session(db, user, *, created: bool, device: str) -> SessionOut:

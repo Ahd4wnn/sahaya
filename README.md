@@ -79,6 +79,15 @@ python -m app.db.make_admin +919744637363 --name "Their Name"
 It creates the account if the number has never signed in, promotes it if it has, and
 `--demote-to hirer` reverses it. They then sign in through the ordinary phone OTP flow.
 
+Add `--email you@gmail.com` to give the account a verified email. That is what lets **Google
+sign-in** find it: Google links by verified email, so an admin made from a phone number alone
+would get a *second* account on its first Google sign-in rather than the admin one.
+
+While no SMS provider is configured, `AUTH_TESTING_OTP=true` in `backend/.env` shows the code on
+the sign-in page instead of sending it. Keep `AUTH_TESTING_OTP_PHONES` set to your own numbers --
+empty means every number, and the reveal is an account takeover for everything it covers. See
+`docs/11-deployment.md`, "Signing in while there is no SMS provider".
+
 ## Tests
 
 ```bash
